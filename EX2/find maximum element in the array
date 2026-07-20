@@ -1,0 +1,108 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <sys/wait.h>
+
+int main() {
+   int pipe1[2], pipe2[2];
+   int arr[100], odd[100];
+   int n, count = 0;
+   int i;
+
+   if (pipe(pipe1) == -1 || pipe(pipe2) == -1) {
+       perror("Pipe creation failed");
+       return 1;
+   }
+
+   int p2 = fork();
+   if (p2 < 0) {
+       perror("Fork P2 failed");
+       return 1;
+   }
+
+   if (p2 == 0) {
+      close(pipe1[0]);
+      close(pipe2[0]);
+      close(pipe2[1]);
+
+      printf("P2 Process:\n");
+      printf("Enter no of elements: ");
+      if (scanf("%d", &n) != 1) return 1;
+
+      for (i = 0; i < n; i++) {
+         if (scanf("%d", &arr[i]) != 1) return 1;
+      }
+
+      write(pipe1[1], &n, sizeof(int));
+      write(pipe1[1], arr, n * sizeof(int));
+      printf("P2 Process: Array sent to P1 process through pipe 1\n\n");
+      close(pipe1[1]);
+   } 
+   else {
+      int p3 = fork();
+      if (p3 < 0) {
+          perror("Fork P3 failed");
+          return 1;
+      }
+
+      if (p3 == 0) {
+         int first = INT_MIN, second = INT_MIN;
+         close(pipe1[0]);
+         close(pipe1[1]);
+         close(pipe2[1]);
+
+         read(pipe2[0], &count, sizeof(int));
+         read(pipe2[0], odd, count * sizeof(int));
+         printf("P3 Process: Received %d odd elements from P1 process through pipe 2\n", count);
+         
+         for (i = 0; i < count; i++) {
+            if (odd[i] > first) {
+               second = first;
+               first = odd[i];
+            }
+            else if (odd[i] > second && odd[i] != first) {
+               second = odd[i];
+            }
+         }
+
+         if (count < 2 || second == INT_MIN) {
+            printf("P3 Process: Second maximum odd element not found\n");
+         }
+         else {
+            printf("P3 Process: Second Maximum Odd Element: %d\n", second);
+         }
+         close(pipe2[0]);
+      }
+      else {
+         close(pipe1[1]);
+         close(pipe2[0]);
+
+         read(pipe1[0], &n, sizeof(int));
+         read(pipe1[0], arr, n * sizeof(int));
+         printf("P1 Process: Received array from P2 process through pipe 1\n");
+         printf("P1 process: Odd elements in the array: ");
+         
+         for (i = 0; i < n; i++) {
+            if (arr[i] % 2 != 0) {
+               odd[count++] = arr[i];
+               printf("%d ", arr[i]);
+            }
+         }
+         printf("\n");
+
+         write(pipe2[1], &count, sizeof(int));
+         write(pipe2[1], odd, count * sizeof(int));
+         printf("P1 Process: Sent odd elements to P3 process through pipe 2\n\n");
+         
+         close(pipe1[0]);
+         close(pipe2[1]);
+
+         wait(NULL); 
+         wait(NULL); 
+      }
+   }
+
+   return 0;
+}
