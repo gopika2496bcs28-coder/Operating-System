@@ -1,0 +1,38 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <unistd.h>
+#define SIZE 8    
+#define KEY 4771    
+int main() {
+    int s1,i;
+    int *buf;
+    int num;
+    int in = 0;
+    s1 = shmget(KEY, sizeof(int) * SIZE, IPC_CREAT | IPC_EXCL | 0600);
+    if (s1 == -1) {
+        perror("shmget failed");
+        exit(1);
+    }
+    buf = (int *)shmat(s1, NULL, 0);
+    if (buf == (void *)-1) {
+        perror("shmat failed");
+        exit(1);
+    }
+    printf("Producer started. Enter %d integers:\n", SIZE);
+    for (i = 0; i < SIZE; i++) {
+        printf("Enter integer [%d]: ", i + 1);
+        if (scanf("%d", &num) != 1) {
+            printf("Invalid input.\n");
+            break;
+        }
+        buf[in % SIZE] = num;
+        in++;
+    }
+    shmdt(buf);
+
+    printf("Data written to shared memory. Run the consumer program now.\n");
+    return 0;
+}
+
