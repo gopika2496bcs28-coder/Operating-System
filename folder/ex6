@@ -1,0 +1,40 @@
+typedef struct {
+    pthread_mutex_t m;
+    pthread_cond_t hc, oc;
+    int c;
+} H2O;
+
+void releaseHydrogen();
+void releaseOxygen();
+
+H2O* h2oCreate() {
+    H2O* obj = malloc(sizeof(H2O));    
+    pthread_mutex_init(&obj->m, NULL);
+    pthread_cond_init(&obj->hc, NULL);
+    pthread_cond_init(&obj->oc, NULL);
+    obj->c = 0;   
+    return obj;
+}
+
+static inline void hydoxy(H2O *obj, pthread_cond_t *c1, pthread_cond_t *c2, char m) {
+    pthread_mutex_lock(&obj->m);
+    for (; m == 'H' ? obj->c == 2 : obj->c != 2 ; pthread_cond_wait(c1, &obj->m));
+    m == 'H' ? (releaseHydrogen(), obj->c++) : (releaseOxygen(), obj->c -= 2);
+    pthread_cond_signal(c2);
+    pthread_mutex_unlock(&obj->m);
+}
+
+void hydrogen(H2O* obj) {
+    hydoxy(obj, &obj->hc, &obj->oc, 'H');
+}
+
+void oxygen(H2O* obj) {
+    hydoxy(obj, &obj->oc, &obj->hc, 'O');
+}
+
+void h2oFree(H2O* obj) {   
+    pthread_mutex_destroy(&obj->m);    
+    pthread_cond_destroy(&obj->hc);
+    pthread_cond_destroy(&obj->oc);
+    free(obj);
+}
