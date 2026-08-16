@@ -1,0 +1,49 @@
+class Solution {
+public:
+    int leastInterval(vector<char>& tasks, int n) {
+        vector<int> freq(26, 0);
+        for(char &ch : tasks) {
+            freq[ch-'A']++;
+        }
+        int time =0;
+        priority_queue<int> pq;
+        for(int i=0;i<26;i++){
+            if(freq[i])
+                pq.push(freq[i]);
+        }
+
+
+        while(!pq.empty()) {
+
+            vector<int> temp;
+            // in 1 cycle n+1 task can be performed. 
+            for(int i=1;i<=n+1;i++) {
+                // take out frequency
+                if(!pq.empty()) // imp check 
+                {
+                    int f = pq.top();
+                    pq.pop();
+                    f--;
+                    temp.push_back(f);
+
+                }
+            }
+
+            for(int &c : temp)
+            {
+                // push again in pq the freq of characters
+                if(c>0)
+                    pq.push(c);
+
+            }
+            // no task left so there will be no temp of n+1
+            if(pq.empty())
+                time+=temp.size();
+            else 
+                time+=n+1;
+        }
+
+        return time;
+        
+    }
+};
