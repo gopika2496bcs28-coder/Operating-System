@@ -1,62 +1,43 @@
 #include <stdio.h>
 #include <stdlib.h>
+
 typedef struct {
-    int enqueueTime;
-    int processingTime;
+    int weight;
     int index;
-} Task;
+} FreeServer;
+
 typedef struct {
-    int processingTime;
+    long long freeTime; // Using long long to avoid time calculation overflow
+    int weight;
     int index;
-} HeapElement;
-int compareTasks(const void *a, const void *b) {
-    Task *t1 = (Task *)a;
-    Task *t2 = (Task *)b;
-    if (t1->enqueueTime != t2->enqueueTime) {
-        return (t1->enqueueTime > t2->enqueueTime) - (t1->enqueueTime < t2->enqueueTime);
-    }
-    if (t1->processingTime != t2->processingTime) {
-        return (t1->processingTime > t2->processingTime) - (t1->processingTime < t2->processingTime);
-    }
-    return (t1->index > t2->index) - (t1->index < t2->index);
-}
-void pushHeap(HeapElement *heap, int *heapSize, int procTime, int index) {
-    int i = (*heapSize)++;
+} BusyServer;
+
+// --- Free Servers Min-Heap ---
+void pushFree(FreeServer *heap, int *size, int weight, int index) {
+    int i = (*size)++;
     while (i > 0) {
         int p = (i - 1) / 2;
-        if (heap[p].processingTime < procTime || 
-           (heap[p].processingTime == procTime && heap[p].index <= index)) {
-            break;
-        }
+        if (heap[p].weight < weight || (heap[p].weight == weight && heap[p].index <= index)) break;
         heap[i] = heap[p];
         i = p;
     }
-    heap[i].processingTime = procTime;
+    heap[i].weight = weight;
     heap[i].index = index;
 }
-HeapElement popHeap(HeapElement *heap, int *heapSize) {
-    HeapElement top = heap[0];
-    (*heapSize)--;
-    
-    if (*heapSize > 0) {
-        HeapElement last = heap[*heapSize];
+
+FreeServer popFree(FreeServer *heap, int *size) {
+    FreeServer top = heap[0];
+    (*size)--;
+    if (*size > 0) {
+        FreeServer last = heap[*size];
         int i = 0;
-        while (i * 2 + 1 < *heapSize) {
-            int left = i * 2 + 1;
-            int right = i * 2 + 2;
-            int best = left;
-            
-            if (right < *heapSize) {
-                if (heap[right].processingTime < heap[left].processingTime || 
-                   (heap[right].processingTime == heap[left].processingTime && heap[right].index < heap[left].index)) {
-                    best = right;
-                }
+        while (i * 2 + 1 < *size) {
+            int left = i * 2 + 1, right = i * 2 + 2, best = left;
+            if (right < *size && (heap[right].weight < heap[left].weight || 
+               (heap[right].weight == heap[left].weight && heap[right].index < heap[left].index))) {
+                best = right;
             }
-            
-            if (last.processingTime < heap[best].processingTime || 
-               (last.processingTime == heap[best].processingTime && last.index <= heap[best].index)) {
-                break;
-            }
+            if (last.weight < heap[best].weight || (last.weight == heap[best].weight && last.index <= heap[best].index)) break;
             heap[i] = heap[best];
             i = best;
         }
@@ -64,34 +45,85 @@ HeapElement popHeap(HeapElement *heap, int *heapSize) {
     }
     return top;
 }
-int* getOrder(int** tasks, int tasksSize, int* tasksColSize, int* returnSize) {
+
+// --- Busy Servers Min-Heap ---
+void pushBusy(BusyServer *heap, int *size, long long freeTime, int weight, int index) {
+    int i = (*size)++;
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (heap[p].freeTime < freeTime || (heap[p].freeTime == freeTime && heap[p].weight < weight) ||
+           (heap[p].freeTime == freeTime && heap[p].weight == weight && heap[p].index <= index)) break;
+        heap[i] = heap[p];
+        i = p;
+    }
+    heap[i].freeTime = freeTime;
+    heap[i].weight = weight;
+    heap[i].index = index;
+}
+
+BusyServer popBusy(BusyServer *heap, int *size) {
+    BusyServer top = heap[0];
+    (*size)--;
+    if (*size > 0) {
+        BusyServer last = heap[*size];
+        int i = 0;
+        while (i * 2 + 1 < *size) {
+            int left = i * 2 + 1, right = i * 2 + 2, best = left;
+            if (right < *size) {
+                if (heap[right].freeTime < heap[left].freeTime ||
+                   (heap[right].freeTime == heap[left].freeTime && heap[right].weight < heap[left].weight) ||
+                   (heap[right].freeTime == heap[left].freeTime && heap[right].weight == heap[left].weight && heap[right].index < heap[left].index)) {
+                    best = right;
+                }
+            }
+            if (last.freeTime < heap[best].freeTime || 
+               (last.freeTime == heap[best].freeTime && last.weight < heap[best].weight) ||
+               (last.freeTime == heap[best].freeTime && last.weight == heap[best].weight && last.index <= heap[best].index)) break;
+            heap[i] = heap[best];
+            i = best;
+        }
+        heap[i] = last;
+    }
+    return top;
+}
+
+int* assignTasks(int* servers, int serversSize, int* tasks, int tasksSize, int* returnSize) {
     *returnSize = tasksSize;
-    int *result = (int *)malloc(tasksSize * sizeof(int));
-        Task *sortedTasks = (Task *)malloc(tasksSize * sizeof(Task));
-    for (int i = 0; i < tasksSize; i++) {
-        sortedTasks[i].enqueueTime = tasks[i][0];
-        sortedTasks[i].processingTime = tasks[i][1];
-        sortedTasks[i].index = i;
+    int *ans = (int *)malloc(tasksSize * sizeof(int));
+    
+    FreeServer *freeHeap = (FreeServer *)malloc(serversSize * sizeof(FreeServer));
+    BusyServer *busyHeap = (BusyServer *)malloc(serversSize * sizeof(BusyServer));
+    int freeSize = 0, busySize = 0;
+    
+    for (int i = 0; i < serversSize; i++) {
+        pushFree(freeHeap, &freeSize, servers[i], i);
     }
-    qsort(sortedTasks, tasksSize, sizeof(Task), compareTasks);
-    HeapElement *heap = (HeapElement *)malloc(tasksSize * sizeof(HeapElement));
-    int heapSize = 0;   
-    long long currentTime = 0; 
-    int taskIdx = 0;
-    int resIdx = 0;
-    while (taskIdx < tasksSize || heapSize > 0) {
-        if (heapSize == 0 && currentTime < sortedTasks[taskIdx].enqueueTime) {
-            currentTime = sortedTasks[taskIdx].enqueueTime;
+    
+    long long currentTime = 0;
+    for (int j = 0; j < tasksSize; j++) {
+        if (currentTime < j) {
+            currentTime = j;
         }
-        while (taskIdx < tasksSize && sortedTasks[taskIdx].enqueueTime <= currentTime) {
-            pushHeap(heap, &heapSize, sortedTasks[taskIdx].processingTime, sortedTasks[taskIdx].index);
-            taskIdx++;
+        
+        while (busySize > 0 && busyHeap[0].freeTime <= currentTime) {
+            BusyServer b = popBusy(busyHeap, &busySize);
+            pushFree(freeHeap, &freeSize, b.weight, b.index);
         }
-        HeapElement currentTask = popHeap(heap, &heapSize);
-        currentTime += currentTask.processingTime;
-        result[resIdx++] = currentTask.index;
+        
+        if (freeSize == 0) {
+            currentTime = busyHeap[0].freeTime;
+            while (busySize > 0 && busyHeap[0].freeTime <= currentTime) {
+                BusyServer b = popBusy(busyHeap, &busySize);
+                pushFree(freeHeap, &freeSize, b.weight, b.index);
+            }
+        }
+        
+        FreeServer nextServer = popFree(freeHeap, &freeSize);
+        ans[j] = nextServer.index;
+        pushBusy(busyHeap, &busySize, currentTime + tasks[j], nextServer.weight, nextServer.index);
     }
-    free(sortedTasks);
-    free(heap);    
-    return result;
+    
+    free(freeHeap);
+    free(busyHeap);
+    return ans;
 }
