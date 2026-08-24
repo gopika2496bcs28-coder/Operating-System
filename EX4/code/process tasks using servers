@@ -1,26 +1,97 @@
-class Solution {
-public:
-    vector<int> assignTasks(vector<int>& servers, vector<int>& tasks) {
-        priority_queue<array<int, 2>, vector<array<int, 2>>, greater<>> free;
-        priority_queue<array<int, 3>, vector<array<int, 3>>, greater<>> busy;         
-        for (int i = 0; i < size(servers); ++i) 
-            free.push({servers[i], i});         
-        vector<int> ans; 
-        for (int t = 0; t < size(tasks); ++t) {
-            while (size(busy) && busy.top()[0] <= t) {
-                auto [tm, wt, i] = busy.top(); busy.pop(); 
-                free.push({wt, i}); 
-            }            
-            if (size(free)) {
-                auto [wt, i] = free.top(); free.pop(); 
-                ans.push_back(i); 
-                busy.push({t + tasks[t], wt, i}); 
-            } else {
-                auto [tm, wt, i] = busy.top(); busy.pop(); 
-                ans.push_back(i);
-                busy.push({tm + tasks[t], wt, i}); 
-            }
-        }
-        return ans; 
+#include <stdio.h>
+#include <stdlib.h>
+typedef struct {
+    int enqueueTime;
+    int processingTime;
+    int index;
+} Task;
+typedef struct {
+    int processingTime;
+    int index;
+} HeapElement;
+int compareTasks(const void *a, const void *b) {
+    Task *t1 = (Task *)a;
+    Task *t2 = (Task *)b;
+    if (t1->enqueueTime != t2->enqueueTime) {
+        return (t1->enqueueTime > t2->enqueueTime) - (t1->enqueueTime < t2->enqueueTime);
     }
-};
+    if (t1->processingTime != t2->processingTime) {
+        return (t1->processingTime > t2->processingTime) - (t1->processingTime < t2->processingTime);
+    }
+    return (t1->index > t2->index) - (t1->index < t2->index);
+}
+void pushHeap(HeapElement *heap, int *heapSize, int procTime, int index) {
+    int i = (*heapSize)++;
+    while (i > 0) {
+        int p = (i - 1) / 2;
+        if (heap[p].processingTime < procTime || 
+           (heap[p].processingTime == procTime && heap[p].index <= index)) {
+            break;
+        }
+        heap[i] = heap[p];
+        i = p;
+    }
+    heap[i].processingTime = procTime;
+    heap[i].index = index;
+}
+HeapElement popHeap(HeapElement *heap, int *heapSize) {
+    HeapElement top = heap[0];
+    (*heapSize)--;
+    
+    if (*heapSize > 0) {
+        HeapElement last = heap[*heapSize];
+        int i = 0;
+        while (i * 2 + 1 < *heapSize) {
+            int left = i * 2 + 1;
+            int right = i * 2 + 2;
+            int best = left;
+            
+            if (right < *heapSize) {
+                if (heap[right].processingTime < heap[left].processingTime || 
+                   (heap[right].processingTime == heap[left].processingTime && heap[right].index < heap[left].index)) {
+                    best = right;
+                }
+            }
+            
+            if (last.processingTime < heap[best].processingTime || 
+               (last.processingTime == heap[best].processingTime && last.index <= heap[best].index)) {
+                break;
+            }
+            heap[i] = heap[best];
+            i = best;
+        }
+        heap[i] = last;
+    }
+    return top;
+}
+int* getOrder(int** tasks, int tasksSize, int* tasksColSize, int* returnSize) {
+    *returnSize = tasksSize;
+    int *result = (int *)malloc(tasksSize * sizeof(int));
+        Task *sortedTasks = (Task *)malloc(tasksSize * sizeof(Task));
+    for (int i = 0; i < tasksSize; i++) {
+        sortedTasks[i].enqueueTime = tasks[i][0];
+        sortedTasks[i].processingTime = tasks[i][1];
+        sortedTasks[i].index = i;
+    }
+    qsort(sortedTasks, tasksSize, sizeof(Task), compareTasks);
+    HeapElement *heap = (HeapElement *)malloc(tasksSize * sizeof(HeapElement));
+    int heapSize = 0;   
+    long long currentTime = 0; 
+    int taskIdx = 0;
+    int resIdx = 0;
+    while (taskIdx < tasksSize || heapSize > 0) {
+        if (heapSize == 0 && currentTime < sortedTasks[taskIdx].enqueueTime) {
+            currentTime = sortedTasks[taskIdx].enqueueTime;
+        }
+        while (taskIdx < tasksSize && sortedTasks[taskIdx].enqueueTime <= currentTime) {
+            pushHeap(heap, &heapSize, sortedTasks[taskIdx].processingTime, sortedTasks[taskIdx].index);
+            taskIdx++;
+        }
+        HeapElement currentTask = popHeap(heap, &heapSize);
+        currentTime += currentTask.processingTime;
+        result[resIdx++] = currentTask.index;
+    }
+    free(sortedTasks);
+    free(heap);    
+    return result;
+}
