@@ -1,0 +1,134 @@
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    char **sentences;
+    int count;
+} Result;
+
+static char *s;
+static int n;
+static char **wordDict;
+static int wordDictSize;
+static Result *memo;
+static int *visited;
+
+static char *copyString(const char *str) {
+    char *copy = malloc(strlen(str) + 1);
+    strcpy(copy, str);
+    return copy;
+}
+
+static int isWord(const char *start, int length) {
+    for (int i = 0; i < wordDictSize; i++) {
+        if ((int)strlen(wordDict[i]) == length &&
+            strncmp(start, wordDict[i], length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static char *combine(const char *word, const char *suffix) {
+    int wordLen = strlen(word);
+    int suffixLen = strlen(suffix);
+
+    int totalLen = wordLen + suffixLen;
+    if (suffixLen > 0) {
+        totalLen++;  // Space between word and suffix
+    }
+
+    char *sentence = malloc(totalLen + 1);
+
+    strcpy(sentence, word);
+
+    if (suffixLen > 0) {
+        strcat(sentence, " ");
+        strcat(sentence, suffix);
+    }
+
+    return sentence;
+}
+
+static Result dfs(int start) {
+    if (visited[start]) {
+        return memo[start];
+    }
+
+    visited[start] = 1;
+    memo[start].sentences = NULL;
+    memo[start].count = 0;
+
+    if (start == n) {
+        memo[start].sentences = malloc(sizeof(char *));
+        memo[start].sentences[0] = copyString("");
+        memo[start].count = 1;
+        return memo[start];
+    }
+
+    for (int end = start + 1; end <= n; end++) {
+        int wordLen = end - start;
+
+        if (!isWord(s + start, wordLen)) {
+            continue;
+        }
+
+        char *word = malloc(wordLen + 1);
+        strncpy(word, s + start, wordLen);
+        word[wordLen] = '\0';
+
+        Result suffixes = dfs(end);
+
+        for (int i = 0; i < suffixes.count; i++) {
+            char *sentence = combine(word, suffixes.sentences[i]);
+
+            memo[start].sentences = realloc(
+                memo[start].sentences,
+                sizeof(char *) * (memo[start].count + 1)
+            );
+
+            memo[start].sentences[memo[start].count++] = sentence;
+        }
+
+        free(word);
+    }
+
+    return memo[start];
+}
+
+/*
+ * LeetCode function signature:
+ *
+ * returnSize = number of returned sentences
+ */
+char **wordBreak(
+    char *input,
+    char **dictionary,
+    int dictionarySize,
+    int *returnSize
+) {
+    s = input;
+    n = strlen(input);
+    wordDict = dictionary;
+    wordDictSize = dictionarySize;
+
+    memo = calloc(n + 1, sizeof(Result));
+    visited = calloc(n + 1, sizeof(int));
+
+    Result answer = dfs(0);
+
+    *returnSize = answer.count;
+
+    char **result = malloc(sizeof(char *) * answer.count);
+
+    for (int i = 0; i < answer.count; i++) {
+        result[i] = answer.sentences[i];
+    }
+
+    free(memo);
+    free(visited);
+
+    return result;
+}
+
+
